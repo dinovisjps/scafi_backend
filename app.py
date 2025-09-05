@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 
 from core import setup_logging, request_id_var, client_ip_var, init_db_pool, close_db_pool, is_ready
 from dtos import AnagrafichePayload, InvoiceResponse, ServiceResponse
-import services
+import service as services
 
 setup_logging()
 app = FastAPI(title="Scafi Backend Integration", version="1.0.0")

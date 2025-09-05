@@ -29,8 +29,8 @@ def _getenv(key: str, default: Optional[str] = None) -> str:
     return v
 
 # -------- Logging config (file + console) with a single, unified format
-LOG_PATH = os.getenv("LOG_PATH", "/home/webprod/logs/scafi_backend.log")
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+LOG_PATH = os.getenv("LOG_PATH", "/home/debian/ORACLE/new_scafiBackend/logs/logs.log")
+LOG_LEVEL = os.getenv("LOG_LEVEL", "DEBUG").upper()
 
 def setup_logging() -> None:
     os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
@@ -89,8 +89,8 @@ SMTP_TIMEOUT    = int(os.getenv("SMTP_TIMEOUT", "5"))
 SMTP_FROM       = os.getenv("SMTP_FROM", "noreply@scafi.it")
 SMTP_TO_DEFAULT = tuple(filter(None, os.getenv("SMTP_TO_DEFAULT", "it@scafi.it").split(",")))
 
-DRY_RUN_DB   = os.getenv("DRY_RUN_DB", "0") == "1"
-DRY_RUN_JDE  = os.getenv("DRY_RUN_JDE", "0") == "1"
+DRY_RUN_DB   = os.getenv("DRY_RUN_DB", "1") == "1"
+DRY_RUN_JDE  = os.getenv("DRY_RUN_JDE", "1") == "1"
 DRY_RUN_SMTP = os.getenv("DRY_RUN_SMTP", "1") == "1"
 
 # -------- Postgres pool with timeouts and keepalives
