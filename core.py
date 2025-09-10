@@ -11,6 +11,10 @@ from urllib.parse import urlparse
 
 import psycopg2
 from psycopg2.pool import SimpleConnectionPool
+from dotenv import load_dotenv
+
+# Load environment variables from a .env file if present, before anything else uses os.getenv
+load_dotenv(dotenv_path="/home/debian/ORACLE/new_scafiBackend/.env", override=False)
 
 # -------- Request context (adds X-Request-ID & client IP to every log line)
 request_id_var: ContextVar[str] = ContextVar("request_id", default="-")
@@ -30,7 +34,7 @@ def _getenv(key: str, default: Optional[str] = None) -> str:
 
 # -------- Logging config (file + console) with a single, unified format
 LOG_PATH = os.getenv("LOG_PATH", "/home/debian/ORACLE/new_scafiBackend/logs/logs.log")
-LOG_LEVEL = os.getenv("LOG_LEVEL", "DEBUG").upper()
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
 def setup_logging() -> None:
     os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
