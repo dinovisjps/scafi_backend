@@ -76,11 +76,11 @@ DB_LOCK_TIMEOUT_MS = int(os.getenv("DB_LOCK_TIMEOUT_MS", "3000"))
 DB_POOL_MIN        = int(os.getenv("DB_POOL_MIN", "1"))
 DB_POOL_MAX        = int(os.getenv("DB_POOL_MAX", "10"))
 
-JDE_HOST     = os.getenv("JDE_HOST", "192.168.11.103")
-JDE_PORT     = int(os.getenv("JDE_PORT", "8000"))
+JDE_HOST     = os.getenv("JDE_HOST")
+JDE_PORT     = int(os.getenv("JDE_PORT"))
 JDE_BASE_URL = os.getenv("JDE_BASE_URL", f"http://{JDE_HOST}:{JDE_PORT}")
 JDE_PATH_ANAG= os.getenv("JDE_PATH_ANAG", "/api/anagrafiche")
-JDE_PATH_FATT= os.getenv("JDE_PATH_FATT", "/api/fatture")
+JDE_PATH_FATT= os.getenv("JDE_PATH_FATT", "/jderest/orchestrator/ALFA_ORC_InsertInvoice")
 JDE_CREDENTIALS_JSON = os.getenv("JDE_CREDENTIALS_JSON")  # optional JSON
 
 HTTP_TIMEOUT      = int(os.getenv("HTTP_TIMEOUT", "15"))
@@ -192,8 +192,8 @@ def http_json(method: str, base_url: str, path: str, payload: Optional[Dict[str,
 
 def jde_ping(timeout: int = 3) -> bool:
     try:
-        status, _ = http_json("GET", JDE_BASE_URL, "/health", None, timeout=timeout, retries=0)
-        return 200 <= status < 500
+        status, _ = http_json("GET", JDE_BASE_URL, "/jderest/discover", None, timeout=timeout, retries=0)
+        return (200 <= status < 300) or status == 403  #TODO: remove 403 and develop health endpoint in JDE
     except Exception as e:
         log.warning("JDE ping failed: %s", e); return False
 
