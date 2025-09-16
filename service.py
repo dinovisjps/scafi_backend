@@ -200,19 +200,18 @@ def create_fatture(p: InvoiceResponse) -> ServiceResponse:
             headers["Authorization"] = auth_header
 
         status, jde_resp = http_json("POST", JDE_BASE_URL, JDE_PATH_FATT, payload, headers=headers)
-        print(status, jde_resp)
         if status >= 400:
-            msg = f"JDE returned HTTP {status} on invoice insert"
+            msg = f"JDE returned HTTP {status} on invoice insert."
             logger.error(msg)
             # Insert an integration log row even for HTTP errors (with minimal fields)
             try:
                 fields = _extract_jde_fields(jde_resp if isinstance(jde_resp, dict) else {})
-                print(fields)
                 default_msg = msg
+                logger.debug(fields.get("message"))
                 _db_insert_integration_log(
                     object_id=p.CustomId,
                     object_type=p.DocumentType,
-                    message=fields.get("message") or default_msg,
+                    message=fields.get("messagea") or default_msg,
                     jde_status=fields.get("jde_status"),
                     jde_start_timestamp=fields.get("jde_start_timestamp"),
                     jde_end_timestamp=fields.get("jde_end_timestamp"),
@@ -226,7 +225,7 @@ def create_fatture(p: InvoiceResponse) -> ServiceResponse:
                 )
             except Exception as log_err:
                 logger.warning("Failed to insert integration_log for HTTP error: %s", log_err)
-            return ServiceResponse(success="0", message=msg)
+            return ServiceResponse(success="0", message=f"{default_msg}\n{fields.get('message') or default_msg}")
 
         # Insert integration log for the response
         try:
@@ -253,8 +252,9 @@ def create_fatture(p: InvoiceResponse) -> ServiceResponse:
             logger.warning("Failed to insert integration_log: %s", log_err)
 
         # If JDE responded with logical ERROR, fetch detailed error log and update DB row
+        #TODO: jde_log_id is not always present as numeric jdeLogId > Unique Key ID (Internal)-UKID
         if str(jde_resp.get("status", "")).upper() == "ERROR":
-            jde_log_id = jde_resp.get("jdeLogId")
+            jde_log_id = fields.get("jde_log_id")
             error_log_path = "/jderest/orchestrator/ALFA_ORC_RetriveErrorLog"
             err_payload = {"jdeLogId": jde_log_id} if jde_log_id is not None else {}
             try:

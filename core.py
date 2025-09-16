@@ -38,26 +38,44 @@ LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
 def setup_logging() -> None:
     os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
+    LOG_CONSOLE = os.getenv("LOG_CONSOLE", "true").lower() == "true"
+    handlers = {
+        "file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": LOG_PATH,
+            "maxBytes": 10_000_000,
+            "backupCount": 5,
+            "formatter": "std",
+            "filters": ["ctx"],
+            "encoding": "utf-8"
+        }
+    }
+
+    if LOG_CONSOLE:
+        handlers["console"] = {
+            "class": "logging.StreamHandler",
+            "formatter": "std",
+            "filters": ["ctx"]
+        }
+
     dictConfig({
         "version": 1,
         "disable_existing_loggers": False,
         "filters": { "ctx": {"()": RequestContextFilter} },
         "formatters": {
-            "std": { "format": "%(asctime)s %(levelname)s %(name)s [rid=%(request_id)s ip=%(client_ip)s] %(message)s" }
+            "std": {
+                "format": "%(asctime)s %(levelname)s %(name)s [rid=%(request_id)s ip=%(client_ip)s] %(message)s"
+            }
         },
-        "handlers": {
-            "file": {
-                "class": "logging.handlers.RotatingFileHandler",
-                "filename": LOG_PATH, "maxBytes": 10_000_000, "backupCount": 5,
-                "formatter": "std", "filters": ["ctx"], "encoding": "utf-8"
-            },
-            "console": { "class": "logging.StreamHandler", "formatter": "std", "filters": ["ctx"] }
+        "handlers": handlers,
+        "root": {
+            "handlers": list(handlers.keys()),
+            "level": LOG_LEVEL
         },
-        "root": { "handlers": ["file", "console"], "level": LOG_LEVEL },
         "loggers": {
-            "uvicorn": {"level": LOG_LEVEL, "handlers": ["file", "console"], "propagate": False},
-            "uvicorn.error": {"level": LOG_LEVEL, "handlers": ["file", "console"], "propagate": False},
-            "uvicorn.access": {"level": LOG_LEVEL, "handlers": ["file", "console"], "propagate": False},
+            "uvicorn": {"level": LOG_LEVEL, "handlers": list(handlers.keys()), "propagate": False},
+            "uvicorn.error": {"level": LOG_LEVEL, "handlers": list(handlers.keys()), "propagate": False},
+            "uvicorn.access": {"level": LOG_LEVEL, "handlers": list(handlers.keys()), "propagate": False},
         }
     })
 
