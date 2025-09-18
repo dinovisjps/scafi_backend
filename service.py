@@ -47,20 +47,6 @@ def _db_upsert_anagrafica(p: AnagrafichePayload) -> None:
     finally:
         put_db_conn(conn)
 
-def _db_upsert_fattura(p: InvoiceResponse) -> None:
-    if DRY_RUN_DB:
-        logger.info("DRY_RUN_DB: skipping DB upsert fattura %s", p.DocumentNumber)
-        return
-    conn = get_db_conn()
-    try:
-        with conn:
-            with conn.cursor() as cur:
-                logger.debug("DB upsert fattura number=%s company=%s", p.DocumentNumber, p.DocumentCompany)
-                # TODO: REPLACE WITH REAL SQL:
-                cur.execute("SELECT 1")
-    finally:
-        put_db_conn(conn)
-
 
 def _basic_auth_header_for_company(company: str) -> Optional[str]:
     """Return a Basic auth header value for the given company if present in JDE_CREDENTIALS_JSON.
@@ -190,8 +176,6 @@ def create_fatture(p: InvoiceResponse) -> ServiceResponse:
     - If JDE reports ERROR, retrieve detailed error log and email a notification
     """
     try:
-        #_db_upsert_fattura(p)
-
         payload: Dict[str, Any] = p.model_dump() if hasattr(p, "model_dump") else p.dict()
 
         headers: Dict[str, str] = {"Content-Type": "application/json"}
@@ -211,7 +195,7 @@ def create_fatture(p: InvoiceResponse) -> ServiceResponse:
                 _db_insert_integration_log(
                     object_id=p.CustomId,
                     object_type=p.DocumentType,
-                    message=fields.get("messagea") or default_msg,
+                    message=fields.get("message") or default_msg,
                     jde_status=fields.get("jde_status"),
                     jde_start_timestamp=fields.get("jde_start_timestamp"),
                     jde_end_timestamp=fields.get("jde_end_timestamp"),
