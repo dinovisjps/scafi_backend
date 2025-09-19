@@ -3,9 +3,10 @@ services.py — Business logic: DB upserts + calls to JDE
 """
 from __future__ import annotations
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 import json as _json
 from base64 import b64encode
+from datetime import datetime
 
 from dtos import AnagrafichePayload, InvoiceResponse, ServiceResponse
 from core import (
@@ -31,6 +32,27 @@ def _attach_credentials(payload: Dict[str, Any]) -> Dict[str, Any]:
     return payload
 
 # ----------------- DB helpers (insert your real SQL where marked)
+
+def _lookup_existing_code(conn, table: str, code: Optional[str]) -> Optional[str]:
+    if not code:
+        return None
+    with conn.cursor() as cur:
+        cur.execute(f"select id,cod from {table} where cod=%s", [code])
+        row = cur.fetchone()
+        return row[1] if row else code
+
+
+def _parse_datetime(dt_str: Optional[str]) -> Optional[datetime]:
+    if not dt_str:
+        return None
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(dt_str, fmt)
+        except Exception:
+            continue
+    return None
+
+
 def _db_upsert_anagrafica(p: AnagrafichePayload) -> None:
     if DRY_RUN_DB:
         logger.info("DRY_RUN_DB: skipping DB upsert anagrafica %s", p.codice)
@@ -39,11 +61,187 @@ def _db_upsert_anagrafica(p: AnagrafichePayload) -> None:
     try:
         with conn:
             with conn.cursor() as cur:
-                logger.debug("DB upsert anagrafica codice=%s", p.codice)
-                # TODO: REPLACE WITH REAL SQL:
-                # Example:
-                # cur.execute("SELECT my_upsert_anagrafica(%s, %s, ...)", (...))
-                cur.execute("SELECT 1")
+                logger.debug("DB upsert anagrafica codice=%s anagrafica=%s", p.codice, p.anagrafica)
+
+                # Resolve dependent codes
+                iva = _lookup_existing_code(conn, "codiva", p.codiceIva) if p.codiceIva else None
+                methodP = _lookup_existing_code(conn, "payment_methods", p.paymentMethod) if p.paymentMethod else None
+                terms = _lookup_existing_code(conn, "payment_terms", p.paymentTerms) if p.paymentTerms else None
+                codPA = True if (p.codicePA == 'PA') else False
+                dati_audit_dt = _parse_datetime(p.datiAudit)
+
+                # Determine existence
+                cur.execute("select count(*) from anagrafiche where cod=%s", [p.codice])
+                (exists_count,) = cur.fetchone()
+
+                # Common values
+                update_sql = (
+                    "update anagrafiche set customer_type=%s, subject_type=%s, anag=%s, piva=%s, "
+                    "fiscal_cod=%s, address=%s, civnum=%s, cap=%s, city=%s, prov=%s, nation=%s, "
+                    "codiva_cod=%s, iban=%s, bank_code=%s, payee_cod=%s, ts=%s, di_number=%s, f55ei22=%s, "
+                    "payment_terms_cod=%s, payment_methods_cod=%s, zucchetti_number=%s, d_stop=%s, parent_number=%s "
+                    "where cod=%s"
+                )
+                insert_sql = (
+                    "insert into anagrafiche("
+                    "cod, customer_type, subject_type, anag, piva, fiscal_cod, address, civnum, cap, city, prov, nation, "
+                    "codiva_cod, iban, bank_code, payee_cod, ts, di_number, f55ei22, payment_terms_cod, payment_methods_cod, "
+                    "zucchetti_number, d_start, parent_number"
+                    ") values("
+                    "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s"
+                    ")"
+                )
+                ins_log_sql = (
+                    "insert into integration_log (object_id, object_type, message, _exception, _timestamp, status, "
+                    "jde_status, jde_start_timestamp, jde_end_timestamp, jde_server_execution_seconds, jde_log_id, integration_type, Company) "
+                    "values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+                )
+
+                if exists_count and exists_count > 0:
+                    d_stop = None
+                    if p.tipo == "BLK":
+                        d_stop = datetime.now()
+                    cur.execute(
+                        update_sql,
+                        [
+                            p.tipo,
+                            p.tipoSoggetto,
+                            p.anagrafica,
+                            p.partitaIva,
+                            p.codiceFiscale,
+                            p.indirizzo,
+                            p.numeroCivico,
+                            p.cap,
+                            p.citta,
+                            p.provincia,
+                            p.nazione,
+                            iva,
+                            p.iban,
+                            p.codiceBanca,
+                            p.payeeNumber,
+                            dati_audit_dt,
+                            p.dichiarazioneIntento,
+                            codPA,
+                            terms,
+                            methodP,
+                            p.zucchettiNumber,
+                            d_stop,
+                            p.codiceprincipale,
+                            p.codice,
+                        ],
+                    )
+                    # Log the update by type
+                    if p.tipo in ("C", "S", "CS"):
+                        type_text = ("Customer" if p.tipo == "C" else ("Supplier" if p.tipo == "S" else "CustomerSupplier"))
+                        message = f"{type_text} {p.codice} {p.anagrafica} Successfully Updated"
+                        cur.execute(
+                            ins_log_sql,
+                            [
+                                p.codice,
+                                p.tipo,
+                                message,
+                                "No Exception",
+                                datetime.now(),
+                                "SUCCESS",
+                                "SUCCESS",
+                                datetime.now(),
+                                datetime.now(),
+                                "0",
+                                "0",
+                                "GLOBAL",
+                                p.codice,
+                            ],
+                        )
+                else:
+                    # Insert
+                    cur.execute(
+                        insert_sql,
+                        [
+                            p.codice,
+                            p.tipo,
+                            p.tipoSoggetto,
+                            p.anagrafica,
+                            p.partitaIva,
+                            p.codiceFiscale,
+                            p.indirizzo,
+                            p.numeroCivico,
+                            p.cap,
+                            p.citta,
+                            p.provincia,
+                            p.nazione,
+                            iva,
+                            p.iban,
+                            p.codiceBanca,
+                            p.payeeNumber,
+                            dati_audit_dt or datetime.now(),
+                            p.dichiarazioneIntento,
+                            codPA,
+                            terms,
+                            methodP,
+                            p.zucchettiNumber,
+                            datetime.now(),
+                            p.codiceprincipale,
+                        ],
+                    )
+                    # Log the insert by type
+                    if p.tipo in ("C", "S", "CS"):
+                        type_text = ("Customer" if p.tipo == "C" else ("Supplier" if p.tipo == "S" else "CustomerSupplier"))
+                        message = f"{type_text} {p.codice} {p.anagrafica} Successfully Inserted"
+                        cur.execute(
+                            ins_log_sql,
+                            [
+                                p.codice,
+                                p.tipo,
+                                message,
+                                "No Exception",
+                                datetime.now(),
+                                "SUCCESS",
+                                "SUCCESS",
+                                datetime.now(),
+                                datetime.now(),
+                                "0",
+                                "0",
+                                "GLOBAL",
+                                p.codice,
+                            ],
+                        )
+    except Exception as e:
+        # On error, attempt to log into integration_log similarly to legacy
+        logger.exception("_db_upsert_anagrafica failed")
+        try:
+            if not DRY_RUN_DB:
+                conn2 = get_db_conn()
+                try:
+                    with conn2:
+                        with conn2.cursor() as cur2:
+                            ins_log_sql = (
+                                "insert into integration_log (object_id, object_type, message, _exception, _timestamp, status, "
+                                "jde_status, jde_start_timestamp, jde_end_timestamp, jde_server_execution_seconds, jde_log_id, integration_type, Company) "
+                                "values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+                            )
+                            cur2.execute(
+                                ins_log_sql,
+                                [
+                                    p.codice,
+                                    p.tipo,
+                                    str(e),
+                                    str(e),
+                                    datetime.now(),
+                                    "ERROR",
+                                    "ERROR",
+                                    datetime.now(),
+                                    datetime.now(),
+                                    "0",
+                                    "",
+                                    "GLOBAL",
+                                    p.codice,
+                                ],
+                            )
+                finally:
+                    put_db_conn(conn2)
+        except Exception:
+            logger.warning("Failed to write error to integration_log")
+        raise
     finally:
         put_db_conn(conn)
 
@@ -156,13 +354,6 @@ def _db_update_integration_log_message_by_jde_log_id(jde_log_id: Any, message: s
 def create_anagrafiche(p: AnagrafichePayload) -> ServiceResponse:
     try:
         _db_upsert_anagrafica(p)
-        payload = p.model_dump() if hasattr(p, "model_dump") else p.dict()
-        payload = _attach_credentials(payload)
-        status, _jde = http_json("POST", JDE_BASE_URL, JDE_PATH_ANAG, payload)
-        if status >= 400:
-            msg = f"JDE returned status {status}"
-            logger.error(msg)
-            return ServiceResponse(success="0", message=msg)
         return ServiceResponse(success="1", message="OK")
     except Exception as e:
         logger.exception("create_anagrafiche failed")
