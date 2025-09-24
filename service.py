@@ -17,19 +17,6 @@ from core import (
 
 logger = logging.getLogger(__name__)
 
-def _attach_credentials(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Optionally inject credentials (from env JDE_CREDENTIALS_JSON) into the outbound payload
-    to keep parity with legacy flows that added them inside the JSON body.
-    """
-    if JDE_CREDENTIALS_JSON and "credentials" not in payload:
-        try:
-            import json as _json
-            payload = dict(payload)
-            payload["credentials"] = _json.loads(JDE_CREDENTIALS_JSON)
-        except Exception as e:
-            logger.warning("Invalid JDE_CREDENTIALS_JSON: %s", e)
-    return payload
 
 # ----------------- DB helpers (insert your real SQL where marked)
 

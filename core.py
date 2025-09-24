@@ -9,9 +9,9 @@ from typing import Any, Dict, Optional, Tuple
 from contextvars import ContextVar
 from urllib.parse import urlparse
 
-import psycopg2
-from psycopg2.pool import SimpleConnectionPool
+from psycopg_pool import ConnectionPool
 from dotenv import load_dotenv
+from psycopg import conninfo as _pg_conninfo
 
 # Load environment variables from a .env file if present, before anything else uses os.getenv
 load_dotenv(dotenv_path="/home/debian/ORACLE/new_scafiBackend/.env", override=False)
@@ -115,21 +115,33 @@ DRY_RUN_DB   = os.getenv("DRY_RUN_DB", "1") == "1"
 DRY_RUN_JDE  = os.getenv("DRY_RUN_JDE", "1") == "1"
 DRY_RUN_SMTP = os.getenv("DRY_RUN_SMTP", "1") == "1"
 
-# -------- Postgres pool with timeouts and keepalives
-_POOL: Optional[SimpleConnectionPool] = None
+# -------- Postgres pool with timeouts and keepalives (psycopg3)
+_POOL: Optional[ConnectionPool] = None
+
+def _conn_kwargs() -> Dict[str, Any]:
+    options = f"-c statement_timeout={DB_STMT_TIMEOUT_MS} -c lock_timeout={DB_LOCK_TIMEOUT_MS}"
+    return {
+        "host": DB_HOST,
+        "port": DB_PORT,
+        "dbname": DB_NAME,
+        "user": DB_USER,
+        "password": DB_PASS,
+        "connect_timeout": DB_CONNECT_TIMEOUT,
+        "options": options,
+        "keepalives": 1,
+        "keepalives_idle": 30,
+        "keepalives_interval": 10,
+        "keepalives_count": 5,
+    }
 
 def init_db_pool() -> None:
     global _POOL
     if _POOL is not None or DRY_RUN_DB:
         if DRY_RUN_DB: log.warning("DB pool NOT initialized (DRY_RUN_DB=1)")
         return
-    dsn = {
-        "dbname": DB_NAME, "user": DB_USER, "password": DB_PASS, "host": DB_HOST, "port": DB_PORT,
-        "connect_timeout": DB_CONNECT_TIMEOUT,
-        "options": f"-c statement_timeout={DB_STMT_TIMEOUT_MS} -c lock_timeout={DB_LOCK_TIMEOUT_MS}",
-        "keepalives": 1, "keepalives_idle": 30, "keepalives_interval": 10, "keepalives_count": 5,
-    }
-    _POOL = SimpleConnectionPool(DB_POOL_MIN, DB_POOL_MAX, **dsn)
+    kwargs = _conn_kwargs()
+    conninfo = _pg_conninfo.make_conninfo(**kwargs)
+    _POOL = ConnectionPool(conninfo=conninfo, min_size=DB_POOL_MIN, max_size=DB_POOL_MAX, kwargs={"autocommit": False})
     log.info("DB pool initialized (min=%s max=%s host=%s db=%s)", DB_POOL_MIN, DB_POOL_MAX, DB_HOST, DB_NAME)
 
 def get_db_conn():
@@ -147,7 +159,7 @@ def put_db_conn(conn) -> None:
 def close_db_pool() -> None:
     global _POOL
     if _POOL is not None:
-        _POOL.closeall(); _POOL = None
+        _POOL.close(); _POOL = None
         log.info("DB pool closed")
 
 def db_ping(timeout_ms: int = 1000) -> bool:

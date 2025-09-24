@@ -48,12 +48,12 @@ def on_shutdown():
 
 # -------- Endpoints (sync handlers run in FastAPI's threadpool)
 @app.post("/integration/anagrafiche", response_model=ServiceResponse)
-async def create_anagrafiche(p: AnagrafichePayload):
+def create_anagrafiche(p: AnagrafichePayload):
     logger.debug("Endpoint /integration/anagrafiche invoked")
     return services.create_anagrafiche(p)
 
 @app.post("/integration/fatture", response_model=ServiceResponse)
-async def create_fatture(p: InvoiceResponse):
+def create_fatture(p: InvoiceResponse):
     logger.debug("Endpoint /integration/fatture invoked")
     return services.create_fatture(p)
 
