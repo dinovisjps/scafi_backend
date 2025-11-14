@@ -74,37 +74,47 @@ Notes:
 ### Run (development)
 Use uvicorn with auto-reload:
 ```bash
+cd /home/debian/ORACLE/new_scafiBackend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
 # From repo root with venv activated
-uvicorn app:app --reload --host 0.0.0.0 --port 8001
+ gunicorn app:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
 ```
 
 ### Run (production)
 Run uvicorn directly with multiple workers (simple, no process manager):
 ```bash
 # Adjust workers to CPU cores; set a sensible timeout
-uvicorn app:app \
-  --host 0.0.0.0 \
-  --port 8001 \
-  --workers 4 \
-  --log-level info
+gunicorn app:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8001
 ```
 
 Or via systemd (recommended on Linux):
 ```ini
+# /etc/systemd/system/scafi-backend.service
 # /etc/systemd/system/scafi-backend.service
 [Unit]
 Description=Scafi Backend (FastAPI)
 After=network.target
 
 [Service]
-WorkingDirectory=/home/debian/ORACLE/new_scafiBackend
-Environment="PATH=/home/debian/ORACLE/new_scafiBackend/.venv/bin"
-# Ensure your .env exists at the project path
-ExecStart=/home/debian/ORACLE/new_scafiBackend/.venv/bin/uvicorn app:app --host 0.0.0.0 --port 8000 --workers 4 --log-level info
+User=webprod
+Group=webprod
+WorkingDirectory=/home/webprod/ORACLE/new_scafiBackend
+ExecStart=/home/webprod/ORACLE/new_scafiBackend/.venv/bin/gunicorn app:app \
+  --workers 4 \
+  --worker-class uvicorn.workers.UvicornWorker \
+  --bind 0.0.0.0:8001
 Restart=always
 RestartSec=5
-User=debian
-Group=debian
+
+# Optional hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
 
 [Install]
 WantedBy=multi-user.target
