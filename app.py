@@ -3,7 +3,7 @@ app.py — FastAPI app, middleware (request-id/IP), routes, lifecycle
 """
 from __future__ import annotations
 
-import time, uuid, logging
+import time, uuid, logging, json
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
@@ -49,12 +49,14 @@ def on_shutdown():
 # -------- Endpoints (sync handlers run in FastAPI's threadpool)
 @app.post("/integration/anagrafiche", response_model=ServiceResponse)
 def create_anagrafiche(p: AnagrafichePayload):
-    logger.debug("Endpoint /integration/anagrafiche invoked")
+    payload = p.model_dump() if hasattr(p, "model_dump") else p.dict()
+    logger.debug("Endpoint /integration/anagrafiche invoked with payload: %s", json.dumps(payload, default=str))
     return services.create_anagrafiche(p)
 
 @app.post("/integration/fatture", response_model=ServiceResponse)
 def create_fatture(p: InvoiceResponse):
-    logger.debug("Endpoint /integration/fatture invoked")
+    payload = p.model_dump() if hasattr(p, "model_dump") else p.dict()
+    logger.debug("Endpoint /integration/fatture invoked with payload: %s", json.dumps(payload, default=str))
     return services.create_fatture(p)
 
 # -------- Diagnostics
